@@ -1,0 +1,7 @@
+.git
+index/
+static/data.js
+data/
+__pycache__/
+*.pyc
+serve.bat

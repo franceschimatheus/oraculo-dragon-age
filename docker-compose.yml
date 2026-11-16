@@ -1,0 +1,90 @@
+# Sobe tudo com um comando:  docker compose up -d
+# Pré-requisito: colocar o PDF do livro em data/Livro.pdf (não vem no repositório).
+name: oraculo
+
+services:
+  # Servidor de IA (Ollama) com o Gemma 4 e o modelo de embeddings
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      # libera a página (servida em outra porta) para falar com o Ollama
+      OLLAMA_ORIGINS: "*"
+      # modelos ficam carregados na memória até o container reiniciar
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+    # GPU NVIDIA (opcional, precisa do NVIDIA Container Toolkit). Sem isso roda na CPU, mais lento:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Baixa os modelos uma vez (é rápido se já estiverem no volume)
+  models:
+    image: ollama/ollama:latest
+    entrypoint: ["sh", "-c"]
+    command: ["ollama pull gemma4:e4b && ollama pull bge-m3"]
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  # Carrega os modelos na memória, para a primeira pergunta já sair rápida
+  warmup:
+    build: .
+    image: oraculo-tools
+    working_dir: /app
+    environment:
+      OLLAMA_URL: "http://ollama:11434"
+    volumes:
+      - ./:/app
+    command: ["python", "warmup.py"]
+    depends_on:
+      models:
+        condition: service_completed_successfully
+
+  # Lê o PDF e gera o índice (só roda se ainda não existir static/data.js)
+  ingest:
+    build: .
+    image: oraculo-tools
+    working_dir: /app
+    environment:
+      OLLAMA_URL: "http://ollama:11434"
+    volumes:
+      - ./:/app
+    command:
+      - sh
+      - -c
+      - |
+        if [ -f static/data.js ]; then echo "índice já existe, pulando"; exit 0; fi
+        python ingest.py /app/data/Livro.pdf && python build_web_data.py
+    depends_on:
+      models:
+        condition: service_completed_successfully
+
+  # A página do chat
+  web:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./static:/usr/share/nginx/html:ro
+    depends_on:
+      ingest:
+        condition: service_completed_successfully
+
+volumes:
+  ollama-models:

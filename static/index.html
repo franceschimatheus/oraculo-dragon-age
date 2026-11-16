@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Oráculo de Thedas</title>
+<style>
+  :root {
+    --bg: #faf8f4; --panel: #ffffff; --ink: #1f1b16; --muted: #7a7166;
+    --accent: #6d4aff; --accent-soft: #ece8ff; --border: #e6e0d4; --user: #f1ede4;
+    --mark: #fff0a8; --err: #b3261e; --code: #f3efe6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161411; --panel: #1f1c18; --ink: #ece7dd; --muted: #958c7e;
+      --accent: #9b82ff; --accent-soft: #2a2540; --border: #322d26; --user: #26221c;
+      --mark: #5c4e14; --err: #ff8a80; --code: #26221c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161411; --panel: #1f1c18; --ink: #ece7dd; --muted: #958c7e;
+    --accent: #9b82ff; --accent-soft: #2a2540; --border: #322d26; --user: #26221c;
+    --mark: #5c4e14; --err: #ff8a80; --code: #26221c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); display: flex; flex-direction: column; overflow: hidden;
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  header {
+    flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .logo {
+    width: 32px; height: 32px; border-radius: 10px; flex: none; display: grid; place-items: center;
+    background: linear-gradient(135deg, #6d4aff, #b06bff); color: #fff; font-weight: 700; font-size: 15px;
+  }
+  .brand h1 { font-size: 15px; margin: 0; line-height: 1.2; }
+  .brand small { display: block; font-size: 12px; color: var(--muted); }
+  .badge { font-size: 12px; padding: 5px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--muted); white-space: nowrap; }
+  .badge.ok { color: #1f7a3a; }
+  @media (prefers-color-scheme: dark) { .badge.ok { color: #7ee09a; } }
+
+  /* área de mensagens: é a única que rola */
+  #scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  #chat { max-width: 780px; margin: 0 auto; padding: 24px 16px 32px; display: flex; flex-direction: column; gap: 28px; }
+
+  .empty { margin: 14vh auto 0; text-align: center; max-width: 480px; }
+  .empty .logo { width: 56px; height: 56px; font-size: 24px; border-radius: 16px; margin: 0 auto 16px; }
+  .empty h2 { font-size: 22px; margin: 0 0 8px; }
+  .empty p { color: var(--muted); margin: 0 0 20px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .chip {
+    font: 14px system-ui, sans-serif; color: var(--ink); background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; padding: 8px 14px; cursor: pointer; min-height: 40px;
+  }
+
+  .msg-user { align-self: flex-end; max-width: 85%; background: var(--user); border-radius: 18px 18px 4px 18px; padding: 10px 16px; }
+  .msg-ai { display: flex; gap: 12px; align-items: flex-start; }
+  .avatar {
+    flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+    background: linear-gradient(135deg, #6d4aff, #b06bff); color: #fff; font-weight: 700; font-size: 13px; margin-top: 2px;
+  }
+  .content { min-width: 0; flex: 1; }
+  .content > :first-child { margin-top: 0; }
+  .content > :last-child { margin-bottom: 0; }
+  .content p { margin: 0 0 10px; }
+  .content ul, .content ol { margin: 0 0 10px; padding-left: 22px; }
+  .content li { margin: 4px 0; }
+  .content h3, .content h4 { margin: 14px 0 6px; font-size: 16px; }
+  .content code { background: var(--code); padding: 1px 5px; border-radius: 5px; font-size: .92em; }
+  .content pre { background: var(--code); padding: 10px 12px; border-radius: 10px; overflow-x: auto; }
+  .content pre code { background: none; padding: 0; }
+  .content strong { font-weight: 700; }
+  .content a { color: var(--accent); }
+  .err { color: var(--err); }
+
+  .typing span { display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+
+  .sources { margin-top: 12px; }
+  .sources summary {
+    cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--muted); padding: 6px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--border);
+  }
+  .sources summary::-webkit-details-marker { display: none; }
+  .passage { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+  .passage .page { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+  .passage .text { white-space: pre-wrap; font-size: 14px; line-height: 1.5; margin: 0; }
+  mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 2px; }
+
+  /* entrada fixa no fim da coluna (não cobre o chat porque o scroll é separado) */
+  footer { flex: none; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg); }
+  .composer-wrap { max-width: 780px; margin: 0 auto; }
+  form.composer {
+    display: flex; align-items: flex-end; gap: 8px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 22px; padding: 6px 6px 6px 16px; box-shadow: 0 4px 18px rgba(0,0,0,.05);
+  }
+  form.composer:focus-within { border-color: var(--accent); }
+  textarea {
+    flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--ink);
+    font: 16px/1.4 system-ui, sans-serif; padding: 10px 0; min-height: 40px; max-height: 160px;
+  }
+  .send {
+    flex: none; width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--accent); color: #fff; font-size: 18px; display: grid; place-items: center;
+  }
+  .send:disabled { opacity: .4; cursor: default; }
+  .ghost { font: 13px system-ui, sans-serif; color: var(--muted); background: transparent; border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+  .meta { display: flex; justify-content: space-between; align-items: center; margin: 8px 6px 0; font-size: 12px; color: var(--muted); }
+  select { font: 13px system-ui, sans-serif; color: var(--ink); background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; }
+
+  @media (min-width: 720px) { body { font-size: 17px; } }
+  @media (max-width: 420px) {
+    #chat { padding: 18px 12px 24px; gap: 22px; }
+    .msg-user { max-width: 92%; }
+    .badge { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">O</div>
+    <h1>Oráculo de Thedas<small>Dragon Age · Livro Básico</small></h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="ghost" id="reset" type="button">Nova conversa</button>
+    <span id="badge" class="badge">carregando…</span>
+  </div>
+</header>
+
+<div id="scroll">
+  <div id="chat">
+    <div class="empty" id="empty">
+      <div class="logo">O</div>
+      <h2>O que você quer saber sobre as regras?</h2>
+      <p>Respostas com a página do livro de onde saíram.</p>
+      <div class="chips">
+        <button class="chip" data-q="qual dado eu rolo pra lançar um feitiço?">Dado para lançar feitiço</button>
+        <button class="chip" data-q="existe algum feitiço tipo bola de fogo?">Feitiços de fogo</button>
+        <button class="chip" data-q="o que é o número-alvo?">O que é o número-alvo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="composer-wrap">
+    <form class="composer" id="form">
+      <textarea id="input" rows="1" placeholder="Pergunte sobre as regras…" enterkeyhint="send"></textarea>
+      <button class="send" id="send" type="submit" aria-label="Enviar">➤</button>
+    </form>
+    <div class="meta">
+      <span>As respostas usam só o livro.</span>
+    </div>
+  </div>
+</footer>
+
+<!-- índice do livro gerado por build_web_data.py -->
+<script src="data.js"></script>
+<script>
+const OLLAMA = (location.protocol.startsWith("http") && location.hostname)
+  ? `${location.protocol}//${location.hostname}:11434`
+  : "http://localhost:11434";
+const EMBED_MODEL = "bge-m3";
+const TOP_K = 6;
+const SYSTEM = `Você é um assistente de regras do RPG Dragon Age (Livro Básico).
+Responda em português, usando APENAS os trechos do livro fornecidos.
+- Procure nos trechos a regra que responde à pergunta, mesmo com outras palavras (por exemplo "rolar" = "rolagem", "conjurar" = "lançar").
+- Explique de forma clara e curta, e cite a página de cada informação no formato (p. N).
+- Use markdown simples: **negrito** para nomes e valores importantes, e listas com "-" quando houver mais de um item.
+- Copie fórmulas, valores e nomes exatamente como estão no texto.
+- Se a resposta não estiver nos trechos, diga que não encontrou no livro.
+- Se o usuário pedir um ajuste ("não era isso", "mais detalhes", "só a fórmula"), aplique-o à resposta anterior da conversa, usando os trechos atuais.`;
+
+// ---------- índice (data.js) ----------
+const STOP = new Set(["a","o","as","os","um","uma","de","do","da","dos","das","em","no","na","nos","nas","e","ou","que","pra","para","por","com","se","eu","voce","meu","minha","uns","umas","ao","aos","como","qual","quais","ser"]);
+const EXPAND = new Map([
+  ["conjurar", ["lancar"]], ["usar", ["lancar"]],
+  ["rodo", ["rolar", "rolagem"]], ["rodar", ["rolar", "rolagem"]], ["rolo", ["rolar", "rolagem"]],
+  ["rolar", ["rolagem"]], ["dado", ["rolagem"]],
+]);
+const BM25_K1 = 1.5, BM25_B = 0.75, RRF_K = 60;
+
+let CHUNKS = [], VECTORS = null, DIM = 0, BM25_IDX = null;
+(function loadIndex() {
+  if (!window.ORACULO) return;
+  CHUNKS = window.ORACULO.chunks;
+  DIM = window.ORACULO.dim;
+  const bin = atob(window.ORACULO.embeddings);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  VECTORS = new Float32Array(bytes.buffer);
+  BM25_IDX = buildBM25(CHUNKS.map(c => c.text));
+})();
+
+function normTok(w) {
+  const t = w.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  return t.length > 3 && t.endsWith("s") ? t.slice(0, -1) : t;
+}
+function tokenize(text) {
+  return (text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").match(/[a-z0-9]+/g) || [])
+    .map(x => (x.length > 3 && x.endsWith("s") ? x.slice(0, -1) : x))
+    .filter(x => !STOP.has(x));
+}
+function expandTokens(tokens) {
+  const out = [...tokens];
+  for (const t of tokens) out.push(...(EXPAND.get(t) || []));
+  return out;
+}
+function buildBM25(docs) {
+  const tokens = docs.map(tokenize);
+  const n = tokens.length;
+  const lens = tokens.map(t => t.length);
+  const avgdl = lens.reduce((a, b) => a + b, 0) / n;
+  const tf = tokens.map(toks => {
+    const m = new Map();
+    for (const t of toks) m.set(t, (m.get(t) || 0) + 1);
+    return m;
+  });
+  const df = new Map();
+  for (const m of tf) for (const t of m.keys()) df.set(t, (df.get(t) || 0) + 1);
+  return { n, avgdl, df, tf, lens };
+}
+function bm25Scores(idx, qTokens) {
+  const scores = new Float64Array(idx.n);
+  for (const t of new Set(qTokens)) {
+    const df = idx.df.get(t);
+    if (!df) continue;
+    const idf = Math.log(1 + (idx.n - df + 0.5) / (df + 0.5));
+    for (let i = 0; i < idx.n; i++) {
+      const f = idx.tf[i].get(t);
+      if (f) scores[i] += idf * f * (BM25_K1 + 1) / (f + BM25_K1 * (1 - BM25_B + BM25_B * idx.lens[i] / idx.avgdl));
+    }
+  }
+  return scores;
+}
+function vectorScores(q) {
+  const n = CHUNKS.length;
+  const scores = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let dot = 0;
+    const off = i * DIM;
+    for (let j = 0; j < DIM; j++) dot += VECTORS[off + j] * q[j];
+    scores[i] = dot;
+  }
+  return scores;
+}
+function rrfFuse(lists, n) {
+  const fused = new Float64Array(n);
+  for (const s of lists) {
+    const order = [...s.keys()].sort((a, b) => s[b] - s[a]);
+    order.forEach((idx, rank) => { fused[idx] += 1 / (RRF_K + rank + 1); });
+  }
+  return fused;
+}
+
+// ---------- Ollama ----------
+let OLLAMA_UP = null;
+
+async function fetchJson(url, body, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      method: body ? "POST" : "GET",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function checkOllama() {
+  try {
+    await fetchJson(OLLAMA + "/api/tags", null, 1500);
+    OLLAMA_UP = true;
+  } catch { OLLAMA_UP = false; }
+  setBadge();
+}
+
+async function embedQuery(text) {
+  const data = await fetchJson(OLLAMA + "/api/embed", { model: EMBED_MODEL, input: [text] }, 4000);
+  const v = data.embeddings[0];
+  let s = 0; for (const x of v) s += x * x; s = Math.sqrt(s) || 1;
+  return Float32Array.from(v, x => x / s);
+}
+
+// histórico da conversa: últimas trocas (pergunta + resposta). Só o texto das respostas
+// vai ao modelo nas trocas anteriores; os trechos são reenviados apenas para a pergunta atual.
+let HISTORY = [];
+const HISTORY_TURNS = 3;
+
+async function generateAnswer(question, hits, model) {
+  const context = hits.map(h => `[p. ${h.page}]\n${h.text}`).join("\n\n");
+  const past = HISTORY.slice(-HISTORY_TURNS).flatMap(t => [
+    { role: "user", content: t.q },
+    { role: "assistant", content: t.a },
+  ]);
+  const data = await fetchJson(OLLAMA + "/api/chat", {
+    model, stream: false, think: false, keep_alive: -1,
+    options: { temperature: 0, num_ctx: 8192 },
+    messages: [
+      { role: "system", content: SYSTEM },
+      ...past,
+      { role: "user", content: `Trechos do livro:\n\n${context}\n\nPergunta: ${question}` },
+    ],
+  }, 180000);
+  return data.message.content;
+}
+
+// ---------- busca ----------
+async function search(question) {
+  // pergunta curta de ajuste ("e a fórmula?", "mais detalhes") não tem termos próprios:
+  // busca junto com a pergunta anterior para trazer os trechos certos
+  let query = question;
+  if (HISTORY.length && tokenize(question).length <= 4) {
+    query = HISTORY[HISTORY.length - 1].q + " " + question;
+  }
+  const expanded = expandTokens(tokenize(query));
+  const kw = bm25Scores(BM25_IDX, expanded);
+  let lists = [kw], mode = "palavras-chave";
+  if (OLLAMA_UP !== false) {
+    try {
+      const q = await embedQuery(query);
+      lists = [vectorScores(q), kw];
+      mode = "híbrida";
+      OLLAMA_UP = true;
+    } catch { OLLAMA_UP = false; }
+  }
+  setBadge();
+  const fused = rrfFuse(lists, CHUNKS.length);
+  const hits = [...fused.keys()]
+    .sort((a, b) => fused[b] - fused[a])
+    .slice(0, TOP_K)
+    .map(i => ({ ...CHUNKS[i] }));
+  return { hits, mode, terms: new Set(expanded) };
+}
+
+// ---------- markdown simples (seguro: escapa HTML antes) ----------
+function esc(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function inline(s) {
+  return s
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+}
+function markdown(src) {
+  const lines = esc(src).replace(/\r/g, "").split("\n");
+  let html = "", i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^```/.test(line)) {
+      const code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      i++;
+      html += `<pre><code>${code.join("\n")}</code></pre>`;
+      continue;
+    }
+    if (/^\s*$/.test(line)) { i++; continue; }
+    if (/^#{1,3}\s+/.test(line)) {
+      html += `<h4>${inline(line.replace(/^#{1,3}\s+/, ""))}</h4>`;
+      i++; continue;
+    }
+    if (/^\s*[-*]\s+/.test(line)) {
+      html += "<ul>";
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        html += `<li>${inline(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>`; i++;
+      }
+      html += "</ul>"; continue;
+    }
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      html += "<ol>";
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+        html += `<li>${inline(lines[i].replace(/^\s*\d+[.)]\s+/, ""))}</li>`; i++;
+      }
+      html += "</ol>"; continue;
+    }
+    const para = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^(\s*[-*]\s+|\s*\d+[.)]\s+|#{1,3}\s|```)/.test(lines[i])) {
+      para.push(lines[i++]);
+    }
+    html += `<p>${para.map(inline).join("<br>")}</p>`;
+  }
+  return html;
+}
+
+// ---------- interface ----------
+const scroll = document.getElementById("scroll");
+const chat = document.getElementById("chat");
+const form = document.getElementById("form");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+const MODEL = "gemma4:e4b";  // modelo único da aplicação
+const badge = document.getElementById("badge");
+
+function highlight(text, terms) {
+  let out = "", last = 0;
+  for (const m of text.matchAll(/[\p{L}\p{N}]+/gu)) {
+    out += esc(text.slice(last, m.index));
+    const word = m[0];
+    out += terms.has(normTok(word)) ? `<mark>${esc(word)}</mark>` : esc(word);
+    last = m.index + word.length;
+  }
+  return out + esc(text.slice(last));
+}
+
+function setBadge() {
+  if (!VECTORS) { badge.textContent = "sem índice"; badge.className = "badge"; return; }
+  if (OLLAMA_UP === true) { badge.textContent = "IA disponível"; badge.className = "badge ok"; }
+  else if (OLLAMA_UP === false) { badge.textContent = "IA offline"; badge.className = "badge"; }
+  else { badge.textContent = "verificando IA…"; badge.className = "badge"; }
+}
+
+function scrollDown() { scroll.scrollTo({ top: scroll.scrollHeight, behavior: "smooth" }); }
+
+function addUser(text) {
+  const d = document.getElementById("empty");
+  if (d) d.remove();
+  const el = document.createElement("div");
+  el.className = "msg-user";
+  el.textContent = text;
+  chat.appendChild(el);
+  scrollDown();
+}
+
+function addAI() {
+  const wrap = document.createElement("div");
+  wrap.className = "msg-ai";
+  wrap.innerHTML = `<div class="avatar">O</div><div class="content"></div>`;
+  chat.appendChild(wrap);
+  scrollDown();
+  return wrap.querySelector(".content");
+}
+
+async function ask(question) {
+  addUser(question);
+  const content = addAI();
+  content.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
+  sendBtn.disabled = true;
+  try {
+    if (!VECTORS) throw new Error("data.js não carregou. Rode build_web_data.py e recarregue a página.");
+    const { hits, mode, terms } = await search(question);
+
+    const answerBox = document.createElement("div");
+    if (OLLAMA_UP === false) {
+      answerBox.innerHTML = `<p class="err">IA offline. Mostrando só os trechos do livro abaixo. Para ativar, veja o README.</p>`;
+    } else {
+      try {
+        const text = await generateAnswer(question, hits, MODEL);
+        answerBox.innerHTML = markdown(text);
+        HISTORY.push({ q: question, a: text });
+      } catch (err) {
+        answerBox.innerHTML = `<p class="err">Não consegui gerar a resposta com a IA: ${esc(err.message)}. Mostrando só os trechos abaixo.</p>`;
+      }
+    }
+
+    const det = document.createElement("details");
+    det.className = "sources";
+    det.open = OLLAMA_UP === false;
+    const sum = document.createElement("summary");
+    sum.textContent = `Fontes: ${hits.length} trechos do livro (busca ${mode})`;
+    det.appendChild(sum);
+    for (const h of hits) {
+      const p = document.createElement("div");
+      p.className = "passage";
+      p.innerHTML = `<span class="page">p. ${h.page}</span><p class="text">${highlight(h.text, terms)}</p>`;
+      det.appendChild(p);
+    }
+
+    content.innerHTML = "";
+    content.append(answerBox, det);
+  } catch (err) {
+    content.innerHTML = `<p class="err">Erro: ${esc(err.message)}</p>`;
+  } finally {
+    sendBtn.disabled = false;
+    scrollDown();
+  }
+}
+
+function send(q) {
+  q = (q || "").trim();
+  if (!q || sendBtn.disabled) return;
+  input.value = "";
+  input.style.height = "auto";
+  ask(q);
+}
+
+form.addEventListener("submit", (e) => { e.preventDefault(); send(input.value); });
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(input.value); }
+});
+input.addEventListener("input", () => {
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 160) + "px";
+});
+document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => send(b.dataset.q)));
+document.getElementById("reset").addEventListener("click", () => {
+  HISTORY = [];
+  location.reload();
+});
+
+setBadge();
+checkOllama();
+</script>
+</body>
+</html>
