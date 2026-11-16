@@ -5,7 +5,20 @@ from pathlib import Path
 
 import os
 
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")  # no Docker vira http://ollama:11434
+
+def _pick_ollama() -> str:
+    """Usa o primeiro Ollama que responder. No Docker: host primeiro, depois o container."""
+    candidates = os.environ.get("OLLAMA_CANDIDATES", "http://localhost:11434").split(",")
+    for url in candidates:
+        try:
+            urllib.request.urlopen(url.strip() + "/api/tags", timeout=2)
+            return url.strip()
+        except Exception:
+            continue
+    return candidates[0].strip()  # nenhum respondeu: falha depois, com mensagem clara
+
+
+OLLAMA_URL = _pick_ollama()
 EMBED_MODEL = "bge-m3"           # embeddings multilíngues (bom para português)
 CHAT_MODEL = "gemma4:e4b"        # Gemma 4 local (modelo menor e mais rápido)
 INDEX_DIR = Path(__file__).parent / "index"

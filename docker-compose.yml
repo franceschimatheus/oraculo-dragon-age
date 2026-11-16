@@ -1,18 +1,15 @@
-# Sobe tudo com um comando:  docker compose up -d
-# Pré-requisito: colocar o PDF do livro em data/Livro.pdf (não vem no repositório).
+# Único arquivo de setup. Sobe tudo com:  docker compose up -d
+# Pré-requisito: o PDF do livro em data/Livro.pdf
+# Usa o Ollama do computador se ele estiver rodando (mais rápido); senão, o do container.
 name: oraculo
 
 services:
-  # Servidor de IA (Ollama) com o Gemma 4 e o modelo de embeddings
+  # Ollama de backup, dentro do Docker (roda na CPU). Não publica porta, então não conflita
+  # com o Ollama do computador.
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
-    ports:
-      - "11434:11434"
     environment:
-      # libera a página (servida em outra porta) para falar com o Ollama
-      OLLAMA_ORIGINS: "*"
-      # modelos ficam carregados na memória até o container reiniciar
       OLLAMA_KEEP_ALIVE: "-1"
     volumes:
       - ollama-models:/root/.ollama
@@ -21,16 +18,8 @@ services:
       interval: 5s
       timeout: 10s
       retries: 60
-    # GPU NVIDIA (opcional, precisa do NVIDIA Container Toolkit). Sem isso roda na CPU, mais lento:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
 
-  # Baixa os modelos uma vez (é rápido se já estiverem no volume)
+  # Baixa os modelos no Ollama do container (executa uma vez)
   models:
     image: ollama/ollama:latest
     entrypoint: ["sh", "-c"]
@@ -41,27 +30,15 @@ services:
       ollama:
         condition: service_healthy
 
-  # Carrega os modelos na memória, para a primeira pergunta já sair rápida
-  warmup:
-    build: .
-    image: oraculo-tools
-    working_dir: /app
-    environment:
-      OLLAMA_URL: "http://ollama:11434"
-    volumes:
-      - ./:/app
-    command: ["python", "warmup.py"]
-    depends_on:
-      models:
-        condition: service_completed_successfully
-
-  # Lê o PDF e gera o índice (só roda se ainda não existir static/data.js)
+  # Indexa o PDF (só roda se ainda não existir static/data.js)
   ingest:
     build: .
     image: oraculo-tools
     working_dir: /app
     environment:
-      OLLAMA_URL: "http://ollama:11434"
+      OLLAMA_CANDIDATES: "http://host.docker.internal:11434,http://ollama:11434"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./:/app
     command:
@@ -74,16 +51,37 @@ services:
       models:
         condition: service_completed_successfully
 
-  # A página do chat
+  # Carrega os modelos no Ollama escolhido, para a primeira pergunta sair rápida
+  warmup:
+    build: .
+    image: oraculo-tools
+    working_dir: /app
+    environment:
+      OLLAMA_CANDIDATES: "http://host.docker.internal:11434,http://ollama:11434"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./:/app
+    command: ["sh", "-c", "python warmup.py || echo 'aviso: não consegui aquecer os modelos'"]
+    depends_on:
+      models:
+        condition: service_completed_successfully
+
+  # A página do chat + proxy /api/ para o Ollama (do computador ou do container)
   web:
     image: nginx:alpine
     restart: unless-stopped
     ports:
       - "8000:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./static:/usr/share/nginx/html:ro
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
     depends_on:
       ingest:
+        condition: service_completed_successfully
+      warmup:
         condition: service_completed_successfully
 
 volumes:

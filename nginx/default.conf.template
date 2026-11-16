@@ -1,0 +1,28 @@
+# A página e a IA ficam na mesma origem (porta 8000): sem CORS, e o celular só acessa essa porta.
+# Ollama do computador tem prioridade; se ele não estiver rodando, usa o do container (backup).
+upstream ollama {
+    server host.docker.internal:11434 max_fails=1 fail_timeout=10s;
+    server ollama:11434 backup;
+}
+
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location /api/ {
+        proxy_pass http://ollama;
+        # o Ollama do computador recusa (403) um Host desconhecido; localhost é aceito pelos dois
+        proxy_set_header Host localhost:11434;
+        proxy_next_upstream error timeout non_idempotent;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        client_max_body_size 10m;
+    }
+}

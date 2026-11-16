@@ -168,9 +168,9 @@
 <!-- índice do livro gerado por build_web_data.py -->
 <script src="data.js"></script>
 <script>
-const OLLAMA = (location.protocol.startsWith("http") && location.hostname)
-  ? `${location.protocol}//${location.hostname}:11434`
-  : "http://localhost:11434";
+// Padrão: mesma origem (o nginx do Docker encaminha /api/ para o Ollama).
+// Se a página estiver num servidor sem esse proxy, checkOllama() usa a porta 11434 direto.
+let OLLAMA = "";
 const EMBED_MODEL = "bge-m3";
 const TOP_K = 6;
 const SYSTEM = `Você é um assistente de regras do RPG Dragon Age (Livro Básico).
@@ -285,10 +285,18 @@ async function fetchJson(url, body, ms) {
 }
 
 async function checkOllama() {
-  try {
-    await fetchJson(OLLAMA + "/api/tags", null, 1500);
-    OLLAMA_UP = true;
-  } catch { OLLAMA_UP = false; }
+  const direct = (location.protocol.startsWith("http") && location.hostname)
+    ? `${location.protocol}//${location.hostname}:11434`
+    : "http://localhost:11434";
+  for (const base of ["", direct]) {
+    try {
+      await fetchJson(base + "/api/tags", null, 1500);
+      OLLAMA = base;
+      OLLAMA_UP = true;
+      break;
+    } catch { /* tenta o próximo */ }
+  }
+  if (OLLAMA_UP !== true) OLLAMA_UP = false;
   setBadge();
 }
 
